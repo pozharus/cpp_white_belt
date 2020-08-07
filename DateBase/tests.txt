@@ -1,0 +1,13 @@
+=================
+1. Test Del with out
+of range [date]
+
+Add 1950-12-12 e1
+Add 1950-12-12 e2
+Add 1950-12-12 e3
+Print
+Del 1950-12-12 e1
+Print
+Del 1800-10-10 e1
+=================
+

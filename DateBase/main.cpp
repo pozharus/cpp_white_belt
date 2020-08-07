@@ -11,7 +11,6 @@ using namespace std;
 // 3. Парсинг даты вида %3423$-12-12, не создается объект и не добавляется словарь,
 // но не выводит error
 // 4. Парсинг даты из примеров
-// 5. Год может быть "0"
 
 string SetPrintDateFormat(const int date, char key) {
     string str_date = to_string(date);
@@ -109,10 +108,11 @@ public:
     }
 
     bool DeleteEvent(const Date& date, const string& event) {
-        int i = 0;
-        i = db_struct.at(date).erase(event); //Удаляет отдельное событие по дате
-        return i != 0;
-
+        if(db_struct.count(date)) {
+            return db_struct.at(date).erase(event); //Удаляет отдельное событие по дате
+        } else {
+            throw out_of_range("Date not found");
+        }
     }
     void  DeleteDate(const Date& date) {
         db_struct.erase(date); //Удаляет всю дату
@@ -160,6 +160,9 @@ Date CheckAndReturnDate(istream& stream_date) {
     int day = 0;
 
     stream_date >> year;
+        if(year < 0) {
+            year = abs(year);
+        }
     CheckDateFormat(stream_date.peek());
     stream_date.ignore(1);
     stream_date >> month;
@@ -178,14 +181,19 @@ Date CheckAndReturnDate(istream& stream_date) {
 
 int main() {
     Database db;
-    string command;
-    while (getline(cin, command)) {
-        // Считайте команды с потока ввода и обработайте каждую
-        cin >> command;
+    string buffer;
+    while (getline(cin, buffer)) { //Считали полную строку
+        istringstream query(buffer);
+        string command;
+        query >> command;
+        cout << "Command: " << command << endl;
+         // Считайте команды с потока ввода и обработайте каждую
         if (command == "Add") {
             string event;
             string str_date; //Строка для ввода даты
-            cin >> str_date >> event; //Вводим дату в строку [Y-M-D]
+            query >> str_date; //Вводим дату в строку [Y-M-D]
+            query >> event;
+
             istringstream stream_date(str_date); //Создаем поток для посимвольного парсинга даты
 
             try {
@@ -204,28 +212,31 @@ int main() {
             db.Print();
 
         } else if (command == "Del") {
-            string data_str;
-            getline(cin,data_str); //Читаем всю строку до enter
-            istringstream in(data_str);
             string date, event;
-            in >> date;
-            in >> event;
+            query >> date;
+            query >> event;
             istringstream stream_date(date); //Создаем поток для посимвольного парсинга даты
             Date new_date = CheckAndReturnDate(stream_date);
             if(event.empty()) {
                 int n_events = db.GetCountEventForDate(new_date);
                 db.DeleteDate(new_date);
-                cout << "Deleted " << n_events << " events";
+                cout << "Deleted " << n_events << " events" << endl;
             } else {
-                if (db.DeleteEvent(new_date, event)) {
-                    cout << "Deleted successfully";
+                int count_of_del_ev;
+                try {
+                    count_of_del_ev = db.DeleteEvent(new_date, event);
+                } catch (exception& ex) { //Обработка исключения обращения к несуществующей дате
+                    ex.what();
+                }
+                if (count_of_del_ev == 1) {
+                    cout << "Deleted successfully" << endl; //Для существующей даты, если есть заданное событие
                 } else {
-                    cout << "Event not found";
+                    cout << "Event not found" << endl; //Если для существующей даты не задано событие
                 }
             }
         } else if(command == "Find") {
             string date;
-            cin >> date;
+            query >> date;
             istringstream stream_date(date);
             Date date_obj = CheckAndReturnDate(stream_date);
             set<string> events = db.Find(date_obj);
@@ -236,6 +247,7 @@ int main() {
                 cout << "Unknown command: " << command << endl;
                 return 0;
             }
+        buffer.clear();
         }
     return 0;
 }
