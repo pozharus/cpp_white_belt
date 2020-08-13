@@ -2,19 +2,13 @@
 #include <set>
 #include <map>
 #include <sstream>
-
+#include <iomanip>
 using namespace std;
 
-//TODO::Иметь ввиду на случай багов:
-// 1.Преобразование к string выводов сообщений об ошибках
-// 2.Первая строка при вводе комманд не считывается
-// 3. Парсинг даты вида %3423$-12-12, не создается объект и не добавляется словарь,
-// но не выводит error
-// 4. Парсинг даты из примеров
+string global_date;
 
-string SetPrintDateFormat(const int date, char key) {
-    string str_date = to_string(date);
-    int date_length = 0;
+void PrintDateFormat(const int date, char key) {
+    int date_length;
     switch(key) {
         case 'y':
             date_length = 4;
@@ -26,40 +20,34 @@ string SetPrintDateFormat(const int date, char key) {
             date_length = 2;
             break;
         default:
-            date_length = str_date.size();
+            date_length = 0;
     }
-    if(str_date.size() < date_length) {
-        string new_str_date;
-        while(new_str_date.size() != date_length-str_date.size()) {
-            new_str_date += "0";
-        }
-        new_str_date += str_date; //[00str_date]
-        return new_str_date;
-    } else {
-        return str_date;
-    }
+
+    cout << setw(date_length) << setfill('0') << date;
 }
 
 void CheckDateFormat(const char& delim) {
     if(delim != '-') {
         string msg("Wrong date format: ");
+        msg += global_date;
         throw runtime_error(msg);
-    } //else: do nothing
+    }
 }
 void CheckMonth(const int& month) {
     if(month < 1 or month > 12) {
         stringstream ss;
         ss << "Month value is invalid: " << month;
-        throw invalid_argument(ss.str());
-    }   //else: do nothing
+        throw runtime_error(ss.str());
+    }
 }
 void CheckDay(const int& day) {
     if(day < 1 or day > 31) {
         stringstream ss;
         ss << "Day value is invalid: " << day;
-        throw invalid_argument(ss.str());
-    }   //else: do nothing
+        throw runtime_error(ss.str());
+    }
 }
+
 // Реализуйте функции и методы классов и при необходимости добавьте свои
 class Date {
 public:
@@ -107,15 +95,19 @@ public:
          db_struct[date].insert(event);
     }
 
-    bool DeleteEvent(const Date& date, const string& event) {
-        if(db_struct.count(date)) {
-            return db_struct.at(date).erase(event); //Удаляет отдельное событие по дате
-        } else {
-            throw out_of_range("Date not found");
-        }
+    int DeleteEvent(const Date& date, const string& event) {
+        int flag;
+        flag = db_struct.at(date).erase(event); //Удаляет отдельное событие по дате
+            if(db_struct.at(date).empty() and flag == 1) {
+                db_struct.erase(date);
+            }
+        return flag;
     }
-    void  DeleteDate(const Date& date) {
+
+    int  DeleteDate(const Date& date) {
+        int count = db_struct.at(date).size();
         db_struct.erase(date); //Удаляет всю дату
+        return count;
     }
 
     set<string> Find(const Date& date) const {
@@ -132,51 +124,59 @@ public:
     void Print() const {
         if(!db_struct.empty()) {
             for (auto &index : db_struct) {
-                cout << SetPrintDateFormat(index.first.GetYear(), 'y') << "-";
-                cout << SetPrintDateFormat(index.first.GetMonth(), 'm') << "-";
-                cout << SetPrintDateFormat(index.first.GetMonth(), 'd');
                 for (auto &item : index.second) {
-                    cout << " " << item; //item as set<events>
+                    PrintDateFormat(index.first.GetYear(), 'y'); cout << "-";
+                    PrintDateFormat(index.first.GetMonth(), 'm'); cout << "-";
+                    PrintDateFormat(index.first.GetDay(), 'd'); cout << " ";
+                    cout << item; //item as set<events>
+                    cout << endl;
                 }
-                cout << endl;
             }
         }
     }
-
-    int GetCountEventForDate(const Date& date) {
-        return db_struct[date].size();
-    }
-
-
 
 private:
     map<Date, set<string>> db_struct;
 };
 
 Date CheckAndReturnDate(istream& stream_date) {
-    //1970-04-23
     int year = 0;
     int month = 0;
     int day = 0;
 
-    stream_date >> year;
-        if(year < 0) {
-            year = abs(year);
-        }
-    CheckDateFormat(stream_date.peek());
-    stream_date.ignore(1);
-    stream_date >> month;
-    CheckMonth(month);
-    CheckDateFormat(stream_date.peek());
-    stream_date.ignore(1);
-    stream_date >> day;
-    CheckDay(day);
-    //В итоге дата будет либо: целые положительные числа, либо отрицательные
-    //или 0 - по умолчанию. Но не будут пустыми, т.к. изначально определены как 0.
-    //Логически: ' ' => 0
+    string msg("Wrong date format: ");
+    msg += global_date;
 
-    Date date{year,month,day};
-    return date;
+    stream_date >> year;
+    CheckDateFormat(stream_date.peek());
+    stream_date.ignore(1);
+    month = stream_date.peek();
+    if (month==EOF) {
+        throw runtime_error(msg);
+    }
+    stream_date >> month;
+
+    CheckDateFormat(stream_date.peek());
+    stream_date.ignore(1);
+
+    day = stream_date.peek();
+    if (day==EOF) {
+        string er = "Wrong date format: " + global_date;
+        throw runtime_error(msg);
+    }
+    stream_date >> day;
+
+    CheckMonth(month);
+    CheckDay(day);
+
+     string ending;
+     stream_date >> ending;
+     if(!ending.empty()) {
+         throw runtime_error(msg);
+     }
+
+     Date date{year,month,day};
+     return date;
 }
 
 int main() {
@@ -186,25 +186,21 @@ int main() {
         istringstream query(buffer);
         string command;
         query >> command;
-        cout << "Command: " << command << endl;
-         // Считайте команды с потока ввода и обработайте каждую
+
         if (command == "Add") {
             string event;
             string str_date; //Строка для ввода даты
             query >> str_date; //Вводим дату в строку [Y-M-D]
             query >> event;
-
-            istringstream stream_date(str_date); //Создаем поток для посимвольного парсинга даты
+            global_date = str_date;
+            istringstream stream_date_add(str_date); //Создаем поток для посимвольного парсинга даты
 
             try {
                 Date new_date;
-                new_date = CheckAndReturnDate(stream_date);
+                new_date = CheckAndReturnDate(stream_date_add);
                 db.AddEvent(new_date, event);
             } catch (runtime_error &ex) {
-                cout << ex.what() << str_date;
-                return 0;
-            } catch (invalid_argument &ex) {
-                cout << ex.what();
+                cout << ex.what() << endl;
                 return 0;
             }
 
@@ -215,39 +211,57 @@ int main() {
             string date, event;
             query >> date;
             query >> event;
-            istringstream stream_date(date); //Создаем поток для посимвольного парсинга даты
-            Date new_date = CheckAndReturnDate(stream_date);
-            if(event.empty()) {
-                int n_events = db.GetCountEventForDate(new_date);
-                db.DeleteDate(new_date);
-                cout << "Deleted " << n_events << " events" << endl;
-            } else {
-                int count_of_del_ev;
-                try {
-                    count_of_del_ev = db.DeleteEvent(new_date, event);
-                } catch (exception& ex) { //Обработка исключения обращения к несуществующей дате
-                    ex.what();
-                }
-                if (count_of_del_ev == 1) {
-                    cout << "Deleted successfully" << endl; //Для существующей даты, если есть заданное событие
+            istringstream stream_date_del(date); //Создаем поток для посимвольного парсинга даты
+            global_date = date;
+            try { //Пробуем создавать объект с датой
+                Date new_date = CheckAndReturnDate(stream_date_del);
+                if (event.empty()) {
+                    try {
+                        int n_events = db.DeleteDate(new_date);
+                        cout << "Deleted " << n_events << " events" << endl;
+                    } catch (out_of_range &ex) { //Ловим исключение out of range, если есть попытка удалить несуществующую дату
+                        cout << "Deleted 0 events" << endl;
+                    }
                 } else {
-                    cout << "Event not found" << endl; //Если для существующей даты не задано событие
-                }
+                    try {
+                        int count_of_del_ev;
+                        count_of_del_ev = db.DeleteEvent(new_date, event);
+                        if (count_of_del_ev == 1) {
+                            cout << "Deleted successfully" << endl; //Для существующей даты, если есть заданное событие
+                        } else {
+                            cout << "Event not found" << endl; //Если для существующей даты не задано событие
+                        }
+                    } catch (out_of_range &ex) {
+                        cout << "Event not found" << endl;
+                        }
+                    }
+                } catch (runtime_error &ex) { //Если дата неккоректна по формату бросаем ошибку
+                    cout << ex.what() << endl;
+                    return 0;
             }
         } else if(command == "Find") {
             string date;
             query >> date;
-            istringstream stream_date(date);
-            Date date_obj = CheckAndReturnDate(stream_date);
-            set<string> events = db.Find(date_obj);
-            for(auto& item : events) {
-                cout << item << endl;
+            istringstream stream_date_find(date);
+            global_date = date;
+            try {
+                Date date_obj = CheckAndReturnDate(stream_date_find);
+                set<string> events = db.Find(date_obj);
+                for (auto &item : events) {
+                    cout << item << endl;
+                }
+            } catch (runtime_error &ex) {
+                cout << ex.what() << endl;
+                return 0;
             }
+        } else if(command.empty()) {
+            continue;
         } else {
                 cout << "Unknown command: " << command << endl;
                 return 0;
-            }
-        buffer.clear();
         }
+        buffer.clear();
+        global_date.clear();
+    }
     return 0;
 }
